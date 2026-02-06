@@ -139,8 +139,8 @@ def load_dataset(ds_name):
     else:
         raise NotImplementedError
     
-    trainloader = DataLoader(trainset, batch_size=64, shuffle=True, pin_memory=True,)
-    testloader = DataLoader(testset, batch_size=64, shuffle=False, pin_memory=True,)
+    trainloader = DataLoader(trainset, batch_size=512, shuffle=True, pin_memory=True,num_workers=16)
+    testloader = DataLoader(testset, batch_size=512, shuffle=False, pin_memory=True,num_workers=16)
 
     return testloader, trainloader
 
@@ -208,6 +208,8 @@ def train_model(
     print("n_params", n_params, "n_params_wd", n_params_wd)
 
     model.train()
+    model.to(device)
+    print(device)
     for epoch in range(epochs):
         for X, Y in trainloader:
             X, Y = X.to(device), Y.to(device)
@@ -227,12 +229,12 @@ def train_model(
                 )
 
 
-            # if pfrac is not None:    
-            #     apply_topk_(
-            #         model,
-            #         pfrac=pfrac,
-            #         structured=False,
-            #     )
+            if pfrac is not None:    
+                apply_topk_(
+                    model,
+                    pfrac=pfrac,
+                    structured=False,
+                )
 
         if epoch % 1 == 0:
             print(f'Epoch {epoch} | Train Acc: {acc(model, trainloader, device):.4f} | Test Acc: {acc(model, testloader, device):.4f}')
