@@ -134,7 +134,7 @@ def load_dataset(ds_name):
         test_idxs  = torch.arange(len(dataset.test_labels))[dataset.test_labels == label]
 
         trainset = Subset(dataset, train_idxs)
-        testset = Subset(dataset, test_idxs) 
+        testset = Subset(dataset, test_idxs)
 
     else:
         raise NotImplementedError
