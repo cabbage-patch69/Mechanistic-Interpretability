@@ -1,0 +1,21 @@
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10          
+  - pytorch              
+  - torchvision          
+  - torchaudio           
+  - pytorch-cuda=12.1   
+  - pandas               
+  - numpy                
+  - matplotlib           
+  - seaborn              
+  - scikit-learn         
+  - jupyterlab           
+  - tqdm                 
+  - pip                  
+  - pip:
+    - torchinfo
