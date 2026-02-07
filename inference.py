@@ -6,10 +6,10 @@ class CNN(nn.Module):
         super(CNN, self).__init__()
 
         self.encoder = nn.Sequential(
-            nn.Conv2d(in_channels=nc, out_channels=nf, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=nc, out_channels=nf, kernel_size=3, padding=1, bias=False),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(in_channels=nf, out_channels=2*nf, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=nf, out_channels=2*nf, kernel_size=3, padding=1, bias=False),
             nn.ReLU(), 
             nn.MaxPool2d(kernel_size=2, stride=2),
             nn.Flatten()
@@ -19,7 +19,7 @@ class CNN(nn.Module):
         with torch.no_grad():
             inp_flat = self.encoder(dummy_input).numel()
 
-        self.fc = nn.Linear(inp_flat, num_classes)
+        self.fc = nn.Linear(inp_flat, num_classes, bias=False)
         self.chain = nn.ModuleList([m for m in self.encoder.children()])
         self.chain.append(self.fc)
 
