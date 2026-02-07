@@ -57,29 +57,33 @@ class Mask(nn.Module):
     
     def clamp(self):
         with torch.no_grad():
-            self.mask.clamp_(min=-5, max=5)
+            #the paper clamps between [-1,1]
+            self.mask.clamp_(min=-1, max=1)
     
     def l0_loss(self):
         return torch.sum(Prune.apply(self.mask, self.temperature))
 
 class Circuit(nn.Module):
-    def __init__(self, model: nn.Module, inp_shape: list[int], mean_activations: list[torch.Tensor]):
+    def __init__(self, model: nn.Module, inp_shape: list[int], mean_activations: list[torch.Tensor], temperature:float=0.3):
         super().__init__()
         self.model = model
         for p in self.model.parameters():
             p.requires_grad = False
+        
         self.mean_activations = mean_activations
        
         dummy_input = torch.randn(1, *inp_shape).to(next(model.parameters()).device)
         
         self.masks = nn.ModuleList([])
 
+        self.temperature = temperature
+
         assert len(mean_activations) == len(model.chain)
 
         with torch.no_grad():
             for mean_act, module in zip(mean_activations, model.chain):
                 dummy_input = module(dummy_input)
-                self.masks.append(Mask(dummy_input.shape[1:], temperature=0.3, mean_act=mean_act))
+                self.masks.append(Mask(dummy_input.shape[1:], temperature=temperature, mean_act=mean_act))
  
     def forward(self, x):
         for mask, module in zip(self.masks, self.model.chain):
@@ -90,9 +94,6 @@ class Circuit(nn.Module):
         for mask in self.masks:
             mask.clamp()
     
-    def nonzero_params(self):
-        return [mask.nonzero() for mask in self.masks]
-
     def total_l0_loss(self):
         return sum(m.l0_loss() for m in self.masks)
     

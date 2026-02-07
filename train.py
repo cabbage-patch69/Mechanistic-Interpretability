@@ -20,12 +20,12 @@ def acc(model: nn.Module, loader: DataLoader, device: torch.device):
 
     correct = 0
     total = 0
-
-    for X,Y in loader:
-        X, Y = X.to(device), Y.to(device)
-        logits = model(X)
-        correct += torch.sum(logits.argmax(dim=1) == Y)
-        total += len(Y)
+    with torch.no_grad():
+        for X,Y in loader:
+            X, Y = X.to(device), Y.to(device)
+            logits = model(X)
+            correct += torch.sum(logits.argmax(dim=1) == Y)
+            total += len(Y)
 
     return correct/total
 
@@ -109,6 +109,30 @@ def calculate_mean_activations(model, loader, device):
     
     return [act / count for act in acts]
 
+#added a resampler
+from typing import Any, Sequence
+
+def resampler(labels: Sequence[Any], class_probs: dict[Any, float], n: int) -> list[int]:
+    classes = np.unique(labels)
+
+    class_idxs = {cls: [] for cls in classes}
+
+    for idx, cls in enumerate(labels):
+        class_idxs[cls].append(idx)
+    
+    for v in class_idxs.values():
+        random.shuffle(v)
+
+    ret: list[int] = []
+    for cls in classes:
+        idxs, prob = class_idxs[cls], class_probs[cls]
+        ret += idxs[:int(prob * n)]
+
+    return ret
+
+
+
+
 def load_dataset(ds_name):
     transform=v2.Compose([
             v2.ToTensor(),
@@ -121,10 +145,27 @@ def load_dataset(ds_name):
 
     elif "mnist-circuit" in ds_name:
         label = int(ds_name[-1])
-        target_transform = lambda x: 1 if x == label else 0
-     
-        trainset = torchvision.datasets.MNIST(root="./data",train=True, transform=transform, download=True, target_transform=target_transform)
+        target_transform = lambda x: x==label
+      
         testset  = torchvision.datasets.MNIST(root="./data",train=False, transform=transform, download=True, target_transform=target_transform)
+
+
+          
+        trainset_super = torchvision.datasets.MNIST(
+            root="./data", 
+            train=True, 
+            transform=transform, 
+            download=True
+        )
+
+        labs = (trainset_super.targets == label) 
+        probs = {0: 0.5, 1: 0.5}
+
+        train_idxs = resampler(labs.tolist(), probs, n=10000)
+        trainset = Subset(trainset_super, train_idxs)
+        
+        # trainset = torchvision.datasets.MNIST(root="./data",train=True, transform=transform, download=True, target_transform=target_transform)
+        # testset  = torchvision.datasets.MNIST(root="./data",train=False, transform=transform, download=True, target_transform=target_transform)
     
     elif "mnist-class" in ds_name:
       
@@ -136,9 +177,34 @@ def load_dataset(ds_name):
         trainset = Subset(dataset, train_idxs)
         testset = Subset(dataset, test_idxs)
 
+
+    elif "custom" in ds_name:
+        label = int(ds_name[-1])
+      
+        testset  = torchvision.datasets.MNIST(root="./data",train=False, transform=transform, download=True)
+
+        trainset_super = torchvision.datasets.MNIST(
+            root="./data", 
+            train=True, 
+            transform=transform, 
+            download=True
+        )
+
+        labs = trainset_super.targets
+        probs = {}
+        for i in range(10):
+            probs[i] = 0.5/9
+        probs[label] = 0.5
+
+        train_idxs = resampler(labs.tolist(), probs, n=10000)
+        trainset = Subset(trainset_super, train_idxs)
+
+    
     else:
         raise NotImplementedError
-    
+        
+
+
     trainloader = DataLoader(trainset, batch_size=512, shuffle=True, pin_memory=True,num_workers=16)
     testloader = DataLoader(testset, batch_size=512, shuffle=False, pin_memory=True,num_workers=16)
 
@@ -241,7 +307,20 @@ def train_model(
 
 
 
-def extract_circuit(model, lr, b1, b2, ds_name, eps, epochs, device, l0_lambda, seed=0):
+def extract_circuit(
+        model:nn.Module, 
+        lr: float, 
+        b1: float, 
+        b2: float, 
+        ds_name: str, 
+        eps: float, 
+        epochs: int, 
+        device: torch.device = 'cpu', 
+        l0_lambda: float = 0.0, 
+        temperature:float =0.3,
+        seed=0
+    ):
+    
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -256,7 +335,7 @@ def extract_circuit(model, lr, b1, b2, ds_name, eps, epochs, device, l0_lambda, 
     mean_activations = calculate_mean_activations(model, trainloader, device)
     
     print("Initializing Circuit...")
-    circuit = inference.Circuit(model, inp_shape, mean_activations)
+    circuit = inference.Circuit(model, inp_shape, mean_activations, temperature)
     circuit.to(device)
 
     optimizer = torch.optim.Adam(circuit.parameters(), lr=lr, eps=eps, betas=(b1, b2))
