@@ -351,7 +351,8 @@ def extract_circuit(
             logits = circuit(X)
             
             ce_loss = F.cross_entropy(logits, Y)
-            l0_loss = torch.log( circuit.total_l0_loss() / circuit.total_params)
+            epsilon = 1e-4
+            l0_loss = torch.log(circuit.total_l0_loss() / circuit.total_params +epsilon)
             
             loss = ce_loss + l0_lambda * l0_loss
             
