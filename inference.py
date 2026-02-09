@@ -45,58 +45,57 @@ class Prune(torch.autograd.Function):
         return grad_output * grad_sigmoid, None
 
 class Mask(nn.Module):
-    def __init__(self, inp_shape: list[int], temperature: float, mean_act: torch.Tensor, activate: bool = True):
+    def __init__(self, inp_shape: list[int], temperature: float, mean_act: torch.Tensor, active: bool = True):
         super().__init__()
-        
-        if activate:
-            init_val = torch.normal(1, 0.1, size=inp_shape)
-        else:
-            init_val = torch.ones(size=inp_shape)
 
-        self.mask = nn.Parameter(init_val, requires_grad=activate)
+        self.active = active
+        init_val = torch.normal(1, 0.1, size=inp_shape) if active else torch.ones(size=inp_shape)
+        self.mask = nn.Parameter(init_val, requires_grad=active)
+
         self.temperature = temperature
         self.register_buffer('mean_act', mean_act.detach())
 
-    def forward(self, x):
+    def forward(self, x, mean_ablation=False):
         mask = Prune.apply(self.mask, self.temperature)
-        return x * mask + (1 - mask) * self.mean_act
+        return x * mask + (1 - mask) * self.mean_act * (mean_ablation)
     
     def clamp(self):
         with torch.no_grad():
-            #the paper clamps between [-1,1]
             self.mask.clamp_(min=-1, max=1)
+        #the paper clamps between [-1,1]
     
     def l0_loss(self):
-        return torch.sum(Prune.apply(self.mask, self.temperature))
+        return torch.sum(Prune.apply(self.mask, self.temperature)) if self.active else 0
+
+
 
 class Circuit(nn.Module):
-    def __init__(self, model: nn.Module, inp_shape: list[int], mean_activations: list[torch.Tensor], temperature:float=0.3):
+    def __init__(self, model: nn.Module, inp_shape: list[int], mean_activations: list[torch.Tensor], temperature:float=0.3, mean_ablation=True):
         super().__init__()
         self.model = model
         for p in self.model.parameters():
             p.requires_grad = False
         
         self.mean_activations = mean_activations
-       
         dummy_input = torch.randn(1, *inp_shape).to(next(model.parameters()).device)
-        
         self.masks = nn.ModuleList([])
-
         self.temperature = temperature
+        self.mean_ablation = mean_ablation
+        self.total_params = 0
         
         assert len(mean_activations) == len(model.chain)
 
         with torch.no_grad():
             for mean_act, module in zip(mean_activations, model.chain):
                 dummy_input = module(dummy_input)
-                self.total_params = dummy_input.numel()
-                activate = isinstance(module, nn.Conv2d)
-                self.masks.append(Mask(dummy_input.shape[1:], temperature=temperature, mean_act=mean_act, activate=activate))
+                self.total_params += dummy_input.numel()
+                active = not isinstance(module, nn.Linear)
+                self.masks.append(Mask(dummy_input.shape[1:], temperature=temperature, mean_act=mean_act, active=active))
                 
  
     def forward(self, x):
         for mask, module in zip(self.masks, self.model.chain):
-            x = mask(module(x))
+            x = mask(module(x), self.mean_ablation)
         return x
     
     def clamp_masks(self):
@@ -104,10 +103,10 @@ class Circuit(nn.Module):
             mask.clamp()
     
     def total_l0_loss(self):
-        return sum(m.l0_loss() for m in self.masks)
+        return sum(m.l0_loss() for m in self.masks if m.active)
     
     def debug_stats(self):
         with torch.no_grad():
-            avg_mask = torch.mean(torch.stack([m.mask.mean() for m in self.masks]))
+            avg_mask = torch.mean(torch.stack([m.mask.mean() for m in self.masks if m.active]))
             return avg_mask.item()
 

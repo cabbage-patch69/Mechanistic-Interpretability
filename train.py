@@ -316,6 +316,7 @@ def extract_circuit(
         device: torch.device = 'cpu', 
         l0_lambda: float = 0.0, 
         temperature:float =0.3,
+        mean_ablation: bool = True,
         seed=0
     ):
     
@@ -333,7 +334,7 @@ def extract_circuit(
     mean_activations = calculate_mean_activations(model, trainloader, device)
     
     print("Initializing Circuit...")
-    circuit = inference.Circuit(model, inp_shape, mean_activations, temperature)
+    circuit = inference.Circuit(model, inp_shape, mean_activations, temperature, mean_ablation)
     circuit.to(device)
 
     optimizer = torch.optim.Adam(circuit.parameters(), lr=lr, eps=eps, betas=(b1, b2))
