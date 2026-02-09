@@ -45,15 +45,21 @@ class Prune(torch.autograd.Function):
         return grad_output * grad_sigmoid, None
 
 class Mask(nn.Module):
-    def __init__(self, inp_shape: list[int], temperature: float, mean_act: torch.Tensor):
+    def __init__(self, inp_shape: list[int], temperature: float, mean_act: torch.Tensor, activate: bool = True):
         super().__init__()
-        self.mask = nn.Parameter(torch.normal(1, 0.1, size=inp_shape), requires_grad=True)
+        
+        if activate:
+            init_val = torch.normal(1, 0.1, size=inp_shape)
+        else:
+            init_val = torch.ones(size=inp_shape)
+
+        self.mask = nn.Parameter(init_val, requires_grad=activate)
         self.temperature = temperature
         self.register_buffer('mean_act', mean_act.detach())
 
     def forward(self, x):
         mask = Prune.apply(self.mask, self.temperature)
-        return x * mask #+ (1 - mask) * self.mean_act
+        return x * mask + (1 - mask) * self.mean_act
     
     def clamp(self):
         with torch.no_grad():
@@ -84,7 +90,9 @@ class Circuit(nn.Module):
             for mean_act, module in zip(mean_activations, model.chain):
                 dummy_input = module(dummy_input)
                 self.total_params = dummy_input.numel()
-                self.masks.append(Mask(dummy_input.shape[1:], temperature=temperature, mean_act=mean_act))
+                activate = isinstance(module, nn.Conv2d)
+                self.masks.append(Mask(dummy_input.shape[1:], temperature=temperature, mean_act=mean_act, activate=activate))
+                
  
     def forward(self, x):
         for mask, module in zip(self.masks, self.model.chain):
