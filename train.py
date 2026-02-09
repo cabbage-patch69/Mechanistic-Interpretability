@@ -83,6 +83,7 @@ def apply_topk_(model, pfrac, min_alive=5):
             mask = mask.view_as(p.data)
             p.data[~mask] = 0 
 
+
 def calculate_mean_activations(model, loader, device):
     model.eval()
     model.to(device)
@@ -290,7 +291,6 @@ def train_model(
                 apply_topk_(
                     model,
                     pfrac=pfrac,
-                    structured=False,
                 )
 
 
@@ -298,7 +298,6 @@ def train_model(
                 apply_topk_(
                     model,
                     pfrac=pfrac,
-                    structured=False,
                 )
 
         if epoch % 1 == 0:
@@ -352,7 +351,7 @@ def extract_circuit(
             logits = circuit(X)
             
             ce_loss = F.cross_entropy(logits, Y)
-            l0_loss = circuit.total_l0_loss()
+            l0_loss = torch.log( circuit.total_l0_loss() / circuit.total_params)
             
             loss = ce_loss + l0_lambda * l0_loss
             

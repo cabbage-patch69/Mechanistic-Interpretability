@@ -77,12 +77,13 @@ class Circuit(nn.Module):
         self.masks = nn.ModuleList([])
 
         self.temperature = temperature
-
+        
         assert len(mean_activations) == len(model.chain)
 
         with torch.no_grad():
             for mean_act, module in zip(mean_activations, model.chain):
                 dummy_input = module(dummy_input)
+                self.total_params = dummy_input.numel()
                 self.masks.append(Mask(dummy_input.shape[1:], temperature=temperature, mean_act=mean_act))
  
     def forward(self, x):
