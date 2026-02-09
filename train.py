@@ -208,7 +208,7 @@ def load_dataset(ds_name):
     trainloader = DataLoader(trainset, batch_size=512, shuffle=True, pin_memory=True,num_workers=16)
     testloader = DataLoader(testset, batch_size=512, shuffle=False, pin_memory=True,num_workers=16)
 
-    return testloader, trainloader
+    return trainloader, testloader
 
 # def finetune(
 #     model: nn.Module,
@@ -266,7 +266,7 @@ def train_model(
         fused=True,
     )
 
-    testloader, trainloader = load_dataset(ds_name)
+    trainloader, testloader = load_dataset(ds_name)
 
     n_params = sum(p.numel() for p in model.parameters())
     n_params_wd = sum(p.numel() for p in model.parameters() if len(p.shape) > 1)
@@ -323,29 +323,36 @@ def extract_circuit(
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    
-    testloader, trainloader = load_dataset(ds_name)
-    inp_shape = next(iter(trainloader))[0][0].shape # (C, H, W)
 
     model.eval()
     model.to(device)
+
+   
+    
+    trainloader, testloader = load_dataset(ds_name)
+    inp_shape = next(iter(trainloader))[0][0].shape # (C, H, W)
+
+
     
     print("Calculating mean activations...")
-    mean_activations = calculate_mean_activations(model, trainloader, device)
+    mean_activations = calculate_mean_activations(model, load_dataset("mnist-baseline")[0], device)
     
     print("Initializing Circuit...")
     circuit = inference.Circuit(model, inp_shape, mean_activations, temperature, mean_ablation)
     circuit.to(device)
 
+    print("Initializing Optimizer...")
     optimizer = torch.optim.Adam(circuit.parameters(), lr=lr, eps=eps, betas=(b1, b2))
 
+   
     print(f"Extracting Circuit (L0 Lambda={l0_lambda})...")
-    
     for epoch in range(epochs):
         circuit.train() 
+        circuit.model.eval()
         total_loss_avg = 0
         
         for X, Y in trainloader:
+
             X, Y = X.to(device), Y.to(device)
 
             optimizer.zero_grad()
@@ -353,7 +360,7 @@ def extract_circuit(
             
             ce_loss = F.cross_entropy(logits, Y)
             epsilon = 1e-4
-            l0_loss = torch.log(circuit.total_l0_loss() / circuit.total_params +epsilon)
+            l0_loss = circuit.total_l0_loss() / circuit.total_params +epsilon
             
             loss = ce_loss + l0_lambda * l0_loss
             
