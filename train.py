@@ -29,8 +29,8 @@ def acc(model: nn.Module, loader: DataLoader, device: torch.device):
 
     return correct/total
 
-
-def topk(x, k, abs=False, dim=None):   
+#added a min_alive parameter which retains some amout of neurons in each filter
+def topk(x, k, abs=False, dim=None, min_alive=4):   
     if k >= x.numel(): k = x.numel()
 
     topk_fn = partial(torch.topk, sorted=False)
@@ -43,11 +43,11 @@ def topk(x, k, abs=False, dim=None):
         assert k % x.shape[dim] == 0
 
         def _topk_fn(x, k, topk_fn):
-            k = k//x.shape[dim]
+            k = max(min_alive, k//x.shape[dim])
             inds = torch.arange(x.numel()).reshape(x.shape)
             inds = inds.transpose(dim, 0).reshape(x.shape[dim], -1)
             vals = x.transpose(dim, 0).reshape(x.shape[dim], -1)
-            vals, i = vals.topk(dim=1, k=k, sorted=False)
+            vals, i = topk_fn(vals, dim=1, k=k, sorted=False)
             inds = torch.gather(inds, 1, i).flatten()
             
             return vals, inds
