@@ -62,22 +62,21 @@ def topk(x, k, abs=False, dim=None, min_alive=4):
 
     return vals, inds
 
-def apply_topk_(model, pfrac, structured=False):
+
+def apply_topk_(model, pfrac, min_alive=5):
+  
     with torch.no_grad():
         for pn, p in model.named_parameters():
             k = int(pfrac * p.numel())
            
-
-            if type(p) == nn.Linear and not ('bias' in pn):
-                _, indices = topk(
-                    p.data,
-                    k=k,
-                    abs=False,
-                    dim=0,
-                )
-            
+            if type(p) == nn.Conv2d:
+                #we prune per filter 
+                _, indices = topk(p.data.abs(), k=k, abs=False, dim=0, min_alive=min_alive)
+                
             else:
-                _, indices = topk(p.data.abs(), k=k, abs=False, dim=None)
+                #we prune globally
+                _, indices = topk(p.data, k=k, abs=False, dim=None, min_alive=min_alive)
+                
             
             mask = torch.zeros_like(p.data.flatten(), dtype=torch.bool)
             mask.index_fill_(0, indices, 1)
