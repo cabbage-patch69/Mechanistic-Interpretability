@@ -3,8 +3,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 
-
-
 def visualize_circuit_masks(circuit, binarize=False):
     # 1. Extract and process masks
     # We zip with the model chain to know what layer type corresponds to what mask
