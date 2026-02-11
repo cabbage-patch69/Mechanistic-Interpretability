@@ -12,10 +12,13 @@ def visualize_circuit_masks(circuit, binarize=False):
     
     with torch.no_grad():
         for i, (mask_module, layer_module) in enumerate(zip(circuit.masks, circuit.model.chain)):
+            name = str(layer_module).split('(')[0]
+            if "ReLU" in name or "MaxPool" in name:
+                continue
+
             mask = mask_module.mask.detach().cpu()
             temp = mask_module.temperature
             
-        
             if binarize:
                 prob = (mask > 0).float()
             else:
