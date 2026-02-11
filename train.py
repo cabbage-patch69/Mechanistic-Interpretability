@@ -76,7 +76,6 @@ def apply_topk_(model, pfrac, min_alive=5):
             else:
                 #we prune globally
                 _, indices = topk(p.data, k=k, abs=False, dim=None, min_alive=min_alive)
-                
             
             mask = torch.zeros_like(p.data.flatten(), dtype=torch.bool)
             mask.index_fill_(0, indices, 1)
@@ -129,9 +128,6 @@ def resampler(labels: Sequence[Any], class_probs: dict[Any, float], n: int) -> l
         ret += idxs[:int(prob * n)]
 
     return ret
-
-
-
 
 def load_dataset(ds_name):
     transform=v2.Compose([
