@@ -6,12 +6,12 @@ class CNN(nn.Module):
         super(CNN, self).__init__()
 
         self.encoder = nn.Sequential(
-            nn.Conv2d(in_channels=nc, out_channels=nf, kernel_size=3, padding=1, bias=False),
+            nn.Conv2d(nc, nf, kernel_size=3, padding=1, bias=False),
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(in_channels=nf, out_channels=2*nf, kernel_size=3, padding=1, bias=False),
+            nn.MaxPool2d(2),
+            nn.Conv2d(nf, 2*nf, kernel_size=3, padding=1, bias=False),
             nn.ReLU(), 
-            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.MaxPool2d(2),
             nn.Flatten()
         )
      
@@ -19,14 +19,22 @@ class CNN(nn.Module):
         with torch.no_grad():
             inp_flat = self.encoder(dummy_input).numel()
 
-        self.fc = nn.Linear(inp_flat, num_classes, bias=False)
-        self.chain = nn.ModuleList([m for m in self.encoder.children()])
-        self.chain.append(self.fc)
+        hidden_dim = max(inp_flat//2, num_classes)
+        self.classifier = nn.Sequential(
+            # nn.Linear(inp_flat, hidden_dim, bias=False),
+            # nn.ReLU(),
+            # nn.Linear(hidden_dim, num_classes, bias=False)
+            nn.Linear(inp_flat, num_classes, bias=False)
+        )
+
+        self.chain = nn.ModuleList([*self.encoder, *self.classifier])
 
     def forward(self, x):
         x = self.encoder(x)
-        x = self.fc(x)
+        x = self.classifier(x)
         return x
+    
+
 
 class Prune(torch.autograd.Function):   
     @staticmethod
@@ -43,52 +51,69 @@ class Prune(torch.autograd.Function):
         sig = torch.sigmoid(mask_param / temp)
         grad_sigmoid = (1 / temp) * sig * (1 - sig)
         return grad_output * grad_sigmoid, None
+    
+
 
 class Mask(nn.Module):
-    def __init__(self, inp_shape: list[int], temperature: float, mean_act: torch.Tensor):
+    def __init__(self, inp_shape: list[int], temperature: float, mean_act: torch.Tensor, active: bool = True):
         super().__init__()
-        self.mask = nn.Parameter(torch.normal(1, 0.1, size=inp_shape), requires_grad=True)
+        self.active = active
         self.temperature = temperature
+
         self.register_buffer('mean_act', mean_act.detach())
 
-    def forward(self, x):
-        mask = Prune.apply(self.mask, self.temperature)
-        return x * mask #+ (1 - mask) * self.mean_act
+        init_val = torch.normal(1, 0.1, size=inp_shape) if active else torch.ones(size=inp_shape)
+        self.mask = nn.Parameter(init_val, requires_grad=active)
+
+        self.cached_mask = None
+
+    def forward(self, x, mean_ablation=False):
+        self.cached_mask = mask = Prune.apply(self.mask, self.temperature)
+        out = x*mask
+        if mean_ablation:
+            out += (1 - mask)*self.mean_act 
+
+        return out
     
     def clamp(self):
         with torch.no_grad():
-            #the paper clamps between [-1,1]
             self.mask.clamp_(min=-1, max=1)
-    
+        
     def l0_loss(self):
-        return torch.sum(Prune.apply(self.mask, self.temperature))
+        return torch.sum(self.cached_mask) if self.active else 0
+
+
 
 class Circuit(nn.Module):
-    def __init__(self, model: nn.Module, inp_shape: list[int], mean_activations: list[torch.Tensor], temperature:float=0.3):
+    def __init__(self, model: nn.Module, inp_shape: list[int], mean_activations: list[torch.Tensor], temperature:float=0.3, mean_ablation=True):
         super().__init__()
+        
         self.model = model
         for p in self.model.parameters():
             p.requires_grad = False
         
         self.mean_activations = mean_activations
-       
-        dummy_input = torch.randn(1, *inp_shape).to(next(model.parameters()).device)
-        
         self.masks = nn.ModuleList([])
-
         self.temperature = temperature
+        self.mean_ablation = mean_ablation
+        self.total_params = 0
+        dummy_input = torch.randn(1, *inp_shape).to(next(model.parameters()).device)
+
         
         assert len(mean_activations) == len(model.chain)
 
         with torch.no_grad():
             for mean_act, module in zip(mean_activations, model.chain):
                 dummy_input = module(dummy_input)
-                self.total_params = dummy_input.numel()
-                self.masks.append(Mask(dummy_input.shape[1:], temperature=temperature, mean_act=mean_act))
+                active = isinstance(module, nn.Conv2d)
+                self.total_params += active*dummy_input.numel()
+
+                self.masks.append(Mask(dummy_input.shape[1:], temperature=temperature, mean_act=mean_act, active=active))
+                
  
     def forward(self, x):
         for mask, module in zip(self.masks, self.model.chain):
-            x = mask(module(x))
+            x = mask(module(x), self.mean_ablation)
         return x
     
     def clamp_masks(self):
@@ -96,10 +121,10 @@ class Circuit(nn.Module):
             mask.clamp()
     
     def total_l0_loss(self):
-        return sum(m.l0_loss() for m in self.masks)
+        return sum(m.l0_loss() for m in self.masks if m.active)
     
     def debug_stats(self):
         with torch.no_grad():
-            avg_mask = torch.mean(torch.stack([m.mask.mean() for m in self.masks]))
+            avg_mask = torch.mean(torch.stack([m.mask.mean() for m in self.masks if m.active]))
             return avg_mask.item()
 
