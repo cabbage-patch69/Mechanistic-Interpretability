@@ -98,6 +98,7 @@ class Circuit(nn.Module):
         self.mean_ablation = mean_ablation
         self.total_params = 0
         dummy_input = torch.randn(1, *inp_shape).to(next(model.parameters()).device)
+        self.cache = []
 
         
         assert len(mean_activations) == len(model.chain)
@@ -111,9 +112,12 @@ class Circuit(nn.Module):
                 self.masks.append(Mask(dummy_input.shape[1:], temperature=temperature, mean_act=mean_act, active=active))
                 
  
-    def forward(self, x):
+    def forward(self, x, cache=False):
+        self.cache.clear()
         for mask, module in zip(self.masks, self.model.chain):
             x = mask(module(x), self.mean_ablation)
+            if cache:
+                self.cache.append(x)
         return x
     
     def clamp_masks(self):

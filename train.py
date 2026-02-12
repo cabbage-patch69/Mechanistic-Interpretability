@@ -201,8 +201,8 @@ def load_dataset(ds_name):
         
 
 
-    trainloader = DataLoader(trainset, batch_size=512, shuffle=True, pin_memory=True,num_workers=16)
-    testloader = DataLoader(testset, batch_size=512, shuffle=False, pin_memory=True,num_workers=16)
+    trainloader = DataLoader(trainset, batch_size=128, shuffle=True, pin_memory=True,num_workers=16)
+    testloader = DataLoader(testset, batch_size=128, shuffle=False, pin_memory=True,num_workers=16)
 
     return trainloader, testloader
 
@@ -300,7 +300,6 @@ def train_model(
             print(f'Epoch {epoch} | Train Acc: {acc(model, trainloader, device):.4f} | Test Acc: {acc(model, testloader, device):.4f}')
 
 
-
 def extract_circuit(
         model:nn.Module, 
         lr: float, 
@@ -356,7 +355,7 @@ def extract_circuit(
             
             ce_loss = F.cross_entropy(logits, Y)
             epsilon = 1e-4
-            l0_loss = circuit.total_l0_loss() / circuit.total_params +epsilon
+            l0_loss = circuit.total_l0_loss()/circuit.total_params+epsilon
             
             loss = ce_loss + l0_lambda * l0_loss
             
