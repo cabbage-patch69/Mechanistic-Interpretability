@@ -3,6 +3,7 @@ import train
 from copy import deepcopy
 import circuit_extract as ce
 import inference
+import matplotlib.pyplot as plt
 
 def scheduler(start, end, start_sparsity, target_sparsity, alpha):
     def f(epochs):
@@ -85,6 +86,16 @@ def invert_masks(circuit: torch.nn.Module):
             if mask.active:
                 mask.mask.mul_(-1) 
 
+def get_neurons(circuit: torch.nn.Module, idxs: torch.Tensor):
+    flattened_masks = []
+    for mask, acts in zip(circuit.masks, circuit.cache):
+        if mask.active:
+            flattened_masks.append(acts.flatten())
+    
+    concatenated = torch.cat(flattened_masks, dim=0)
+    
+    return concatenated[idxs]
+
 def class_wise_acc(model, loader, classes, device):
     model.eval()
     model.to(device)
@@ -105,3 +116,40 @@ def class_wise_acc(model, loader, classes, device):
                 total[cls] += torch.sum(Y==i)
 
     return {cls:correct[cls]/total[cls] for cls in classes}
+
+def visualize_optimal_input_robust(circuit, neuron_idxs, inp_shape, steps=500, lr=0.1, 
+                                   tv_weight=0.1, l2_weight=0.01):
+  
+    circuit.eval()
+    
+  
+    device = next(circuit.parameters()).device
+    input_img = torch.randn(1,*inp_shape, requires_grad=True, device=device)
+    
+    optimizer = torch.optim.Adam([input_img], lr=lr)
+    
+    for i in range(steps):
+        optimizer.zero_grad()
+        circuit.zero_grad()
+        
+        circuit(input_img, cache=True)
+        target_activation = get_neurons(circuit, neuron_idxs).sum()
+        loss_activation = -target_activation
+
+        diff_h = torch.abs(input_img[:, :, :, :-1] - input_img[:, :, :, 1:])
+        diff_v = torch.abs(input_img[:, :, :-1, :] - input_img[:, :, 1:, :])
+        loss_tv = torch.sum(diff_h) + torch.sum(diff_v)
+
+        loss_l2 = torch.norm(input_img)
+
+        loss = loss_activation + (tv_weight * loss_tv) + (l2_weight * loss_l2)
+        
+        loss.backward()
+        optimizer.step()
+        
+        if i % 100 == 0:
+            print(f"Step {i} | Act: {target_activation.item():.2f} | TV: {loss_tv.item():.2f}")
+            
+            plt.imshow(input_img.detach().cpu().squeeze().numpy(), cmap='gray')
+            plt.title(f"Step {i}")
+            plt.show() 
