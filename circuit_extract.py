@@ -104,7 +104,7 @@ def visualize_circuit_masks(circuit, binarize=False):
     plt.tight_layout(rect=[0, 0.03, 1, 0.95]) # Adjust for suptitle
     
     output_path = "circuit_visualization.png"
-    plt.savefig(output_path)
+    # plt.savefig(output_path)
     plt.show()
     print(f"\nVisualization saved to {output_path}")
 
