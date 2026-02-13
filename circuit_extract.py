@@ -2,6 +2,9 @@ import torch
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
+from copy import deepcopy
+
+import utils
 
 def visualize_circuit_masks(circuit, binarize=False):
     # 1. Extract and process masks
@@ -11,7 +14,11 @@ def visualize_circuit_masks(circuit, binarize=False):
     with torch.no_grad():
         for i, (mask_module, layer_module) in enumerate(zip(circuit.masks, circuit.model.chain)):
             name = str(layer_module).split('(')[0]
-            if "ReLU" in name or "MaxPool" in name:
+            
+            # if "ReLU" in name or "MaxPool" in name:
+            #     continue
+
+            if not mask_module.active:
                 continue
 
             mask = mask_module.mask.detach().cpu()
@@ -31,7 +38,7 @@ def visualize_circuit_masks(circuit, binarize=False):
 
     # 2. Filter data for plotting
     conv_layers = [l for l in layers_data if l["type"] == "conv"]
-    fc_layers = [l for l in layers_data if l["type"] == "fc"]
+    fc_layers =   [l for l in layers_data if l["type"] == "fc"]
 
     # 3. Setup Figure
     # We create a Grid with 2 Rows: Top for Conv, Bottom for FC
@@ -108,84 +115,85 @@ def visualize_circuit_masks(circuit, binarize=False):
     plt.show()
     print(f"\nVisualization saved to {output_path}")
 
-def analyze_disconnected_unmasked(circuit, threshold_weight=0.1, threshold_mask=0.5):
-    """
-    Identifies and visualizes 'Zombie' units: Channels/Neurons that are 
-    kept active by the mask (unmasked) but have near-zero weights (disconnected).
-    """
-    print(f" Analysis: Disconnected vs Unmasked ")
+# def analyze_disconnected_unmasked(circuit, threshold_weight=0.1, threshold_mask=0.5):
+#     """
+#     Identifies and visualizes 'Zombie' units: Channels/Neurons that are 
+#     kept active by the mask (unmasked) but have near-zero weights (disconnected).
+#     """
+#     print(f" Analysis: Disconnected vs Unmasked ")
     
-    zombies = []
+#     zombies = []
 
-    # Based on inference.CNN structure:
-    weight_layers = {
-        0: "Conv 1",
-        3: "Conv 2",
-        7: "Classifier (Linear)"
-    }
+#     # Based on inference.CNN structure:
+#     weight_layers = {
+#         0: "Conv 1",
+#         3: "Conv 2",
+#         7: "Classifier (Linear)"
+#     }
 
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
-    fig.suptitle("Weight Magnitude vs. Mask Activation\n(Top-Left Quadrant = Disconnected yet Unmasked)", fontsize=16)
+#     fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+#     fig.suptitle("Weight Magnitude vs. Mask Activation\n(Top-Left Quadrant = Disconnected yet Unmasked)", fontsize=16)
 
-    for idx, (layer_idx, layer_name) in enumerate(weight_layers.items()):
-        # 1. Get Mask Data
-        # Mask is on the OUTPUT of the layer.
-        mask_module = circuit.masks[layer_idx]
+#     for idx, (layer_idx, layer_name) in enumerate(weight_layers.items()):
+#         # 1. Get Mask Data
+#         # Mask is on the OUTPUT of the layer.
+#         mask_module = circuit.masks[layer_idx]
 
-        # Calculate Mean Mask Value per Channel/Unit
-        with torch.no_grad():
-            mask_val = torch.sigmoid(mask_module.mask / mask_module.temperature).cpu()
+#         # Calculate Mean Mask Value per Channel/Unit
+#         with torch.no_grad():
+#             mask_val = torch.sigmoid(mask_module.mask / mask_module.temperature).cpu()
             
-            if mask_val.dim() > 1: # Conv Layer: (C, H, W) -> Average over H,W to get (C)
-                mask_scores = mask_val.mean(dim=[1, 2])
-            else: # Linear Layer: (C)
-                mask_scores = mask_val
+#             if mask_val.dim() > 1: # Conv Layer: (C, H, W) -> Average over H,W to get (C)
+#                 mask_scores = mask_val.mean(dim=[1, 2])
+#             else: # Linear Layer: (C)
+#                 mask_scores = mask_val
 
-            # 2. Get Weight Data
-            layer_module = circuit.model.chain[layer_idx]
-            weights = layer_module.weight.data.cpu() # Shape: (Out, In, k, k) or (Out, In)
+#             # 2. Get Weight Data
+#             layer_module = circuit.model.chain[layer_idx]
+#             weights = layer_module.weight.data.cpu() # Shape: (Out, In, k, k) or (Out, In)
             
-            # Calculate L2 Norm of filters producing these outputs
-            # Flatten all dims except the first (Out Channels)
-            weight_norms = weights.view(weights.shape[0], -1).norm(dim=1)
+#             # Calculate L2 Norm of filters producing these outputs
+#             # Flatten all dims except the first (Out Channels)
+#             weight_norms = weights.view(weights.shape[0], -1).norm(dim=1)
 
-        # 3. Identify Zombies
-        # Unmasked (Mask > 0.5) AND Disconnected (Weight < threshold)
-        is_unmasked = mask_scores > threshold_mask
-        is_disconnected = weight_norms < threshold_weight
-        zombie_indices = torch.where(is_unmasked & is_disconnected)[0]
+#         # 3. Identify Zombies
+#         # Unmasked (Mask > 0.5) AND Disconnected (Weight < threshold)
+#         is_unmasked = mask_scores > threshold_mask
+#         is_disconnected = weight_norms < threshold_weight
+#         zombie_indices = torch.where(is_unmasked & is_disconnected)[0]
         
-        if len(zombie_indices) > 0:
-            zombies.append(f"{layer_name}: {len(zombie_indices)} units (Indices: {zombie_indices.tolist()})")
+#         if len(zombie_indices) > 0:
+#             zombies.append(f"{layer_name}: {len(zombie_indices)} units (Indices: {zombie_indices.tolist()})")
 
-        # 4. Plot
-        ax = axes[idx]
-        ax.scatter(weight_norms, mask_scores, alpha=0.6, c=mask_scores, cmap='viridis')
+#         # 4. Plot
+#         ax = axes[idx]
+#         ax.scatter(weight_norms, mask_scores, alpha=0.6, c=mask_scores, cmap='viridis')
         
-        # Add "Zombie Zone" highlighting
-        ax.axhspan(ymin=threshold_mask, ymax=1.1, xmin=0, xmax=threshold_weight/max(weight_norms), 
-                   color='red', alpha=0.1, label='Zombie Zone')
+#         # Add "Zombie Zone" highlighting
+#         ax.axhspan(ymin=threshold_mask, ymax=1.1, xmin=0, xmax=threshold_weight/max(weight_norms), 
+#                    color='red', alpha=0.1, label='Zombie Zone')
         
-        ax.set_title(f"{layer_name}\n({weights.shape[0]} units)")
-        ax.set_xlabel("Weight L2 Norm (Connection Strength)")
-        ax.set_ylabel("Mask Probability (Keep Strength)")
-        ax.grid(True, linestyle='--', alpha=0.5)
+#         ax.set_title(f"{layer_name}\n({weights.shape[0]} units)")
+#         ax.set_xlabel("Weight L2 Norm (Connection Strength)")
+#         ax.set_ylabel("Mask Probability (Keep Strength)")
+#         ax.grid(True, linestyle='--', alpha=0.5)
         
-        # Annotate specific points if they are zombies
-        for z_idx in zombie_indices:
-             ax.text(weight_norms[z_idx], mask_scores[z_idx], str(z_idx.item()), fontsize=8)
+#         # Annotate specific points if they are zombies
+#         for z_idx in zombie_indices:
+#              ax.text(weight_norms[z_idx], mask_scores[z_idx], str(z_idx.item()), fontsize=8)
 
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-    plt.show()
+#     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+#     plt.show()
     
-    print("Potential 'Zombie' Units found:")
-    for z in zombies:
-        print(f" - {z}")
-    if not zombies:
-        print(" - None found (All kept units have significant weights)")
+#     print("Potential 'Zombie' Units found:")
+#     for z in zombies:
+#         print(f" - {z}")
+#     if not zombies:
+#         print(" - None found (All kept units have significant weights)")
         
-    return zombies
+#     return zombies
 
+#hmmm this fn only looks at a layer and averages over channels (Imma try something more granular)
 def analyze_circuit_overlay(circuits_dict, layer_idx=3):
     """
     Visualizes the intersection of neurons across multiple class circuits.
@@ -254,3 +262,8 @@ def analyze_circuit_overlay(circuits_dict, layer_idx=3):
     print(f" - Class-Specific Neurons (Used by exactly 1): {len(unique_neurons)}")
     
     return shared_neurons
+
+
+
+
+

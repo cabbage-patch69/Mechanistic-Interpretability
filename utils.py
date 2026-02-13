@@ -12,6 +12,7 @@ def scheduler(start, end, start_sparsity, target_sparsity, alpha):
         return (target_sparsity* t + (1-t) * start_sparsity)
     return f
 
+#added an optional parameter
 def run_class_circuit(class_idx: int, model, epochs=9, l0_lambda=0.05, lr=1e-3, mean_ablation=True):
     """
     Extracts and visualizes a circuit for a specific target class (0-9).
@@ -112,8 +113,8 @@ def class_wise_acc(model, loader, classes, device):
             
             for i,cls in enumerate(classes):
 
-                correct[cls] += torch.sum((preds == i) & (Y == i))
-                total[cls] += torch.sum(Y==i)
+                correct[cls] += torch.sum((preds == i) & (Y == i)).item()
+                total[cls] += torch.sum(Y==i).item()
 
     return {cls:correct[cls]/total[cls] for cls in classes}
 
