@@ -2,8 +2,12 @@ import torch
 import train
 from copy import deepcopy
 import circuit_extract as ce
-import inference
+import inference as inf
 import matplotlib.pyplot as plt
+import torch.nn.functional as F
+import numpy as np
+
+EPSILON = 1e-8
 
 def scheduler(start, end, start_sparsity, target_sparsity, alpha):
     def f(epochs):
@@ -101,7 +105,7 @@ def class_wise_acc(model, loader, classes, device):
     model.eval()
     model.to(device)
 
-    epsilon = 1e-8
+    epsilon = EPSILON
     correct = {cls:0 for cls in classes}
     total = {cls:epsilon for cls in classes}
 
@@ -154,3 +158,101 @@ def visualize_optimal_input_robust(circuit, neuron_idxs, inp_shape, steps=500, l
             plt.imshow(input_img.detach().cpu().squeeze().numpy(), cmap='gray')
             plt.title(f"Step {i}")
             plt.show() 
+
+# New for testing : Talib
+def get_binary_masks(circuit: inf.Circuit):
+    return [(m.mask > 0).float().detach() for m in circuit.masks]
+
+def get_mask_ratio(c_a: inf.Circuit, c_b: inf.Circuit):
+    # intersection / union
+    a_masks = get_binary_masks(c_a)
+    b_masks = get_binary_masks(c_b)
+
+    inter = 0
+    union = 0
+
+    for a, b in zip(a_masks, b_masks):
+        inter += torch.logical_and(a, b).sum().item()
+        union += torch.logical_or(a, b).sum().item()
+
+    return inter/(union + EPSILON)
+
+def circuit_consistency_matrix(circuits: list[inf.Circuit], n):
+    matrix = torch.zeros((n,n))
+
+    for i in range(n):
+        for j in range(n):
+            if i == j:
+                matrix[i,j] = 1.0
+            else:
+                matrix[i,j] = get_mask_ratio(circuits[i], circuits[j])
+
+    return matrix
+
+def path_divergence(c_a: inf.Circuit, c_b: inf.Circuit, loader, dev="cuda"):
+    # course, not granular
+    layer_sims = []
+
+    with torch.no_grad():
+        for inp, _ in loader:
+            inp = inp.to(dev)
+            out_a, out_b = c_a(inp, cache=True), c_b(inp, cache=True)
+
+            batch_sims = []
+
+            for act_a, act_b in zip(c_a.cache, c_b.cache):
+                flat_a, flat_b = act_a.view(act_a.size(0), -1), act_b.view(act_b.size(0), -1)
+                batch_sims.append(F.cosine_similarity(flat_a, flat_b, dim=1).mean().item())
+
+            layer_sims.append(batch_sims)
+            break # just one for now
+
+    return np.mean(layer_sims, axis=0) # layer sim list
+
+def interp_circ(c_a: inf.Circuit, c_b: inf.Circuit, alpha):
+    interp = deepcopy(c_a)
+
+    with torch.no_grad():
+        for m_interp, m_a, m_b in zip(interp.masks, c_a.masks, c_b.masks):
+            m_interp.mask.data = (alpha * m_a.mask.data) + ((1-alpha)*m_b.mask.data)
+
+    return interp
+
+def verify_circuit_manifold(c_a: inf.Circuit, c_b: inf.Circuit, loader, target, steps=10, dev="cuda"):
+    
+    alphas = np.linspace(0, 1, steps)
+    accs = []
+
+    for alpha in alphas:
+        interp = interp_circ(c_a, c_b, alpha)
+        interp.eval()
+        total = 0.0
+        corr = 0.0
+
+        with torch.no_grad():
+            for inp, lab in loader:
+                inp, lab = inp.to(dev), lab.to(dev)
+
+                mine = lab == target
+                if not mine.any(): continue
+
+                out = interp(inp[mine])
+                preds = out.argmax(dim=1)
+
+                corr += (preds == lab[mine]).sum().item()
+                total += mine.sum().item()
+
+        accs.append(corr / (total+EPSILON))
+
+    return accs
+
+def mini_circuit(circuit: inf.Circuit, target_layer):
+    # isolate circuit layerwise
+    subset = deepcopy(circuit)
+
+    with torch.no_grad():
+        for i, m in enumerate(subset.masks):
+            if i!= target_layer:
+                m.mask.data = torch.ones_like(m.mask.data)
+
+    return subset
