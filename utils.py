@@ -256,3 +256,17 @@ def mini_circuit(circuit: inf.Circuit, target_layer):
                 m.mask.data = torch.ones_like(m.mask.data)
 
     return subset
+
+def get_mask_ratio_layerwise(c_a: inf.Circuit, c_b: inf.Circuit):
+    ratios = []
+
+    a_masks, b_masks = get_binary_masks(c_a), get_binary_masks(c_b)
+
+    with torch.no_grad():
+        for m_a, m_b in zip(a_masks, b_masks):
+            inter = torch.logical_and(m_a, m_b).sum().item()
+            union = torch.logical_or(m_a, m_b).sum().item()
+
+            ratios.append(inter / (union+EPSILON))
+            
+    return ratios
