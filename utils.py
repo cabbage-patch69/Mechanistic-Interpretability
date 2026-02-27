@@ -162,7 +162,7 @@ def visualize_optimal_input_robust(circuit, neuron_idxs, inp_shape, steps=500, l
 
 # New for testing : Talib
 def get_binary_masks(circuit: inf.Circuit):
-    return [(m.mask > 0).float().detach() for m in circuit.masks]
+    return [(m.mask > 0).float().detach() for m in circuit.masks if m.active]
 
 def get_mask_ratio(c_a: inf.Circuit, c_b: inf.Circuit):
     # intersection / union
@@ -233,7 +233,8 @@ def interp_circ(c_a: inf.Circuit, c_b: inf.Circuit, alpha):
 
     with torch.no_grad():
         for m_interp, m_a, m_b in zip(interp.masks, c_a.masks, c_b.masks):
-            m_interp.mask.data = (alpha * m_a.mask.data) + ((1-alpha)*m_b.mask.data)
+            if m_a.active or m_b.active:
+                m_interp.mask.data = (alpha * m_a.mask.data) + ((1-alpha)*m_b.mask.data)
 
     return interp
 
@@ -271,7 +272,7 @@ def mini_circuit(circuit: inf.Circuit, target_layer):
 
     with torch.no_grad():
         for i, m in enumerate(subset.masks):
-            if i!= target_layer:
+            if m.active and i!= target_layer:
                 m.mask.data = torch.ones_like(m.mask.data)
 
     return subset
@@ -346,7 +347,7 @@ def plot_circuit_testing_heatmap(circuits_dict, test_func, dataloader, classes=[
     plt.figure(figsize=(10, 8))
     sns.heatmap(results_matrix, annot=True, fmt=".2f", cmap="viridis", 
                 xticklabels=classes, yticklabels=circuit_keys)
-    plt.colorbar(label=("Accuracy (%)"))
+    # plt.colorbar(label=("Accuracy (%)"))
     plt.xlabel("Evaluated on Class")
     plt.ylabel("Circuit Extracted for Class")
     plt.title(f"Heatmap of {test_func.__name__}")
@@ -367,7 +368,8 @@ def get_layerwise_circuits(circuit):
     layerwise_dict = {}
     num_masks = len(circuit.masks)
     
-    for target_layer in range(num_masks):
+    for target_layer, m_target in enumerate(num_masks):
+        if not m_target.active: continue
         layerwise_dict[target_layer] = mini_circuit(circuit, target_layer)
         
     return layerwise_dict
@@ -416,6 +418,7 @@ def plot_path_divergence_trajectories(divergence_dict, out_path, title):
     plt.grid(True, linestyle='--', alpha=0.5)
     plt.tight_layout()
     plt.savefig(out_path, dpi=300, bbox_inches='tight')
+    plt.show()
     plt.close()
 
 def union_circuits(circuits):
