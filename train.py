@@ -353,11 +353,11 @@ def extract_circuit(
             optimizer.zero_grad()
             logits = circuit(X)
             
-            ce_loss = F.cross_entropy(logits, Y)
+            ce_loss = F.cross_entropy(logits, Y)###
             epsilon = 1e-4
             l0_loss = circuit.total_l0_loss()/circuit.total_params+epsilon
             
-            loss = ce_loss + l0_lambda * l0_loss
+            loss = -(ce_loss + l0_lambda * l0_loss)
             
             loss.backward()
             optimizer.step()
