@@ -6,6 +6,7 @@ import inference as inf
 import matplotlib.pyplot as plt
 import torch.nn.functional as F
 import numpy as np
+import seaborn as sns
 
 EPSILON = 1e-8
 
@@ -107,7 +108,7 @@ def class_wise_acc(model, loader, classes, device):
 
     epsilon = EPSILON
     correct = {cls:0 for cls in classes}
-    total = {cls:epsilon for cls in classes}
+    total = {cls:0 for cls in classes}
 
     with torch.no_grad():
         for X,Y in loader:
@@ -115,12 +116,12 @@ def class_wise_acc(model, loader, classes, device):
             logits = model(X)
             preds = logits.argmax(dim=1)
             
-            for i,cls in enumerate(classes):
+            for cls in classes:
+                mask = (Y == cls)
+                correct[cls] += (preds[mask] == Y[mask]).sum().item()
+                total[cls] += mask.sum().item()
 
-                correct[cls] += torch.sum((preds == i) & (Y == i)).item()
-                total[cls] += torch.sum(Y==i).item()
-
-    return {cls:correct[cls]/total[cls] for cls in classes}
+    return {cls:(correct[cls]/total[cls] if total[cls] > 0 else 0.0) for cls in classes}
 
 def visualize_optimal_input_robust(circuit, neuron_idxs, inp_shape, steps=500, lr=0.1, 
                                    tv_weight=0.1, l2_weight=0.01):
@@ -270,3 +271,67 @@ def get_mask_ratio_layerwise(c_a: inf.Circuit, c_b: inf.Circuit):
             ratios.append(inter / (union+EPSILON))
             
     return ratios
+
+def get_n_circuits_same_class(model, class_idx, n=10, epochs=10, lr=0.1, l0_lambda=8e2):
+    circuits = []
+    for i in range(n):
+        print(f"Extracting duplicate {i+1}/{n} for class {class_idx}")
+
+        c = run_class_circuit(class_idx=class_idx, model=model, epochs=epochs, 
+                                 l0_lambda=l0_lambda, lr=lr, mean_ablation=True)
+        circuits.append(c)
+    return circuits
+
+def get_circuit_from_classes(model, classes=[0,1,2,3,4,5,6,7,8,9], epochs=10, lr=0.1, l0_lambda=8e2):
+    circuits_dict = {}
+    for cls in classes:
+        print(f"Extracting circuit for class {cls}")
+        c = run_class_circuit(class_idx=cls, model=model, epochs=epochs, 
+                                 l0_lambda=l0_lambda, lr=lr, mean_ablation=True)
+        circuits_dict[cls] = c
+    return circuits_dict
+
+def isolation_testing(circuit, dataloader, classes=[0,1,2,3,4,5,6,7,8,9], dev='cuda'):
+    circuit.mean_ablation = not circuit.mean_ablation
+    
+    accs = class_wise_acc(circuit, dataloader, classes, dev)
+    
+    circuit.mean_ablation = not circuit.mean_ablation
+    return accs
+
+def necessity_testing(circuit, dataloader, classes=[0,1,2,3,4,5,6,7,8,9], dev='cuda'):
+    circuit.mean_ablation = not circuit.mean_ablation
+    
+    invert_masks(circuit)
+    accs = class_wise_acc(circuit, dataloader, classes, dev)
+    invert_masks(circuit)
+    
+    circuit.mean_ablation = not circuit.mean_ablation
+    return accs
+
+def plot_circuit_testing_heatmap(circuits_dict, test_func, dataloader, classes=[0,1,2,3,4,5,6,7,8,9], dev='cuda'):
+
+    num_circuits = len(circuits_dict)
+    num_classes = len(classes)
+    results_matrix = np.zeros((num_circuits, num_classes))
+    circuit_keys = list(circuits_dict.keys())
+    
+    for i, c_key in enumerate(circuit_keys):
+        circuit = circuits_dict[c_key]
+        # test_func is either isolation_testing or necessity_testing
+        accs_dict = test_func(circuit, dataloader, classes, dev) 
+        
+        for j, cls in enumerate(classes):
+            results_matrix[i, j] = accs_dict[cls]
+            
+    # Plotting
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(results_matrix, annot=True, fmt=".2f", cmap="YlGnBu", 
+                xticklabels=classes, yticklabels=circuit_keys)
+    plt.xlabel("Evaluated on Class")
+    plt.ylabel("Circuit Extracted for Class")
+    plt.title(f"Heatmap of {test_func.__name__}")
+    plt.show()
+    
+    return results_matrix
+
