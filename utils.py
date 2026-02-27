@@ -368,7 +368,7 @@ def get_layerwise_circuits(circuit):
     layerwise_dict = {}
     num_masks = len(circuit.masks)
     
-    for target_layer, m_target in enumerate(num_masks):
+    for target_layer, m_target in enumerate(circuit.masks):
         if not m_target.active: continue
         layerwise_dict[target_layer] = mini_circuit(circuit, target_layer)
         
