@@ -190,6 +190,24 @@ def circuit_consistency_matrix(circuits: list[inf.Circuit], n):
 
     return matrix
 
+def visualize_consistency_matrix(matrix: torch.Tensor, 
+                                 title: str = "Circuit Consistency Matrix",
+                                 figsize=(8, 6),
+                                 cmap="viridis",
+                                 annot=False):
+    if isinstance(matrix, torch.Tensor):
+        matrix = matrix.cpu().numpy()
+
+    plt.figure(figsize=figsize)
+    sns.heatmap(matrix, annot=annot, cmap=cmap, square=True,
+                cbar_kws={"shrink": 0.8}, linewidths=0.5)
+
+    plt.title(title, fontsize=14)
+    plt.xlabel("Circuit Index", fontsize=12)
+    plt.ylabel("Circuit Index", fontsize=12)
+    plt.tight_layout()
+    plt.show()
+
 def path_divergence(c_a: inf.Circuit, c_b: inf.Circuit, loader, dev="cuda"):
     # course, not granular
     layer_sims = []
@@ -326,8 +344,9 @@ def plot_circuit_testing_heatmap(circuits_dict, test_func, dataloader, classes=[
             
     # Plotting
     plt.figure(figsize=(10, 8))
-    sns.heatmap(results_matrix, annot=True, fmt=".2f", cmap="YlGnBu", 
+    sns.heatmap(results_matrix, annot=True, fmt=".2f", cmap="viridis", 
                 xticklabels=classes, yticklabels=circuit_keys)
+    plt.colorbar(label=("Accuracy (%)"))
     plt.xlabel("Evaluated on Class")
     plt.ylabel("Circuit Extracted for Class")
     plt.title(f"Heatmap of {test_func.__name__}")
@@ -335,3 +354,82 @@ def plot_circuit_testing_heatmap(circuits_dict, test_func, dataloader, classes=[
     
     return results_matrix
 
+def get_interpolated_circuits(c_a, c_b, steps=10):
+    alphas = np.linspace(0, 1, steps)
+    interp_dict = {}
+    
+    for alpha in alphas:
+        interp_dict[alpha] = interp_circ(c_a, c_b, alpha)
+        
+    return interp_dict
+
+def get_layerwise_circuits(circuit):
+    layerwise_dict = {}
+    num_masks = len(circuit.masks)
+    
+    for target_layer in range(num_masks):
+        layerwise_dict[target_layer] = mini_circuit(circuit, target_layer)
+        
+    return layerwise_dict
+
+def path_divergence_dict(circuits_dict, loader, device="cuda"):
+    keys = list(circuits_dict.keys())
+    divergence_results = {}
+    
+    orig_ablations = {k: c.mean_ablation for k, c in circuits_dict.items()}
+    for c in circuits_dict.values():
+        c.mean_ablation = False
+        
+    for i in range(len(keys)):
+        for j in range(i + 1, len(keys)):
+            k_a, k_b = keys[i], keys[j]
+            sims = path_divergence(circuits_dict[k_a], circuits_dict[k_b], loader, device)
+            divergence_results[(k_a, k_b)] = sims
+            
+    for k, c in circuits_dict.items():
+        c.mean_ablation = orig_ablations[k]
+        
+    return divergence_results
+
+def plot_path_divergence_trajectories(divergence_dict, out_path, title):
+        
+    plt.figure(figsize=(14, 7))
+    
+    layers = range(len(next(iter(divergence_dict.values()))))
+    
+    sorted_pairs = sorted(divergence_dict.items(), key=lambda x: str(x[0]))
+    
+    colormap = plt.cm.get_cmap('tab20', len(sorted_pairs))
+    
+    for idx, (pair, sims) in enumerate(sorted_pairs):
+        label_name = f"{pair[0]} vs {pair[1]}"
+        plt.plot(layers, sims, marker='o', linewidth=2, alpha=0.7, color=colormap(idx), label=label_name)
+        
+    plt.title(title, fontsize=14, fontweight='bold')
+    plt.xlabel("Layer Index (from input to output)", fontsize=12)
+    plt.ylabel("Cosine Similarity (Intermediate Activations)", fontsize=12)
+    plt.xticks(layers)
+    
+    # handles upto ~45 items well..
+    plt.legend(bbox_to_anchor=(1.02, 1), loc="upper left", ncol=2, fontsize='small', title="Circuit Pairs")
+    
+    plt.grid(True, linestyle='--', alpha=0.5)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=300, bbox_inches='tight')
+    plt.close()
+
+def union_circuits(circuits):
+    """circuits: List of circuits"""
+    neurons = torch.cat([active_neurons(c) for c in circuits], dim=0).unique()
+
+    # inv = torch.cat([active_neurons(invert_neurons(c)) for c in circuits, dim=0).unique()
+
+    # all_em = torch.cat(neurons, inv).unique()
+
+    c_0_neurons = active_neurons(circuits[0])
+    c_0 = deepcopy(circuits[0])
+    toggle_neurons(c_0, c_0_neurons)
+
+    toggle_neurons(c_0, neurons)
+
+    return c_0
