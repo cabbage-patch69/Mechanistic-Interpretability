@@ -321,14 +321,10 @@ def extract_circuit(
 
     model.eval()
     model.to(device)
-
-   
     
     trainloader, testloader = load_dataset(ds_name)
     inp_shape = next(iter(trainloader))[0][0].shape # (C, H, W)
 
-
-    
     print("Calculating mean activations...")
     mean_activations = calculate_mean_activations(model, load_dataset("mnist-baseline")[0], device)
     
@@ -353,7 +349,7 @@ def extract_circuit(
             optimizer.zero_grad()
             logits = circuit(X)
             
-            ce_loss = F.cross_entropy(logits, Y)###
+            ce_loss = F.cross_entropy(logits, Y)
             epsilon = 1e-4
             l0_loss = circuit.total_l0_loss()/circuit.total_params+epsilon
             

@@ -160,7 +160,6 @@ def visualize_optimal_input_robust(circuit, neuron_idxs, inp_shape, steps=500, l
             plt.title(f"Step {i}")
             plt.show() 
 
-# New for testing : Talib
 def get_binary_masks(circuit: inf.Circuit):
     return [(m.mask > 0).float().detach() for m in circuit.masks if m.active]
 
