@@ -219,12 +219,12 @@ def path_divergence(c_a: inf.Circuit, c_b: inf.Circuit, loader, dev="cuda"):
 
             batch_sims = []
 
-            for act_a, act_b in zip(c_a.cache, c_b.cache):
+            for act_a, act_b in zip(c_a.cache, c_b.cache): # need to select activations only for active masks in cache
                 flat_a, flat_b = act_a.view(act_a.size(0), -1), act_b.view(act_b.size(0), -1)
                 batch_sims.append(F.cosine_similarity(flat_a, flat_b, dim=1).mean().item())
 
             layer_sims.append(batch_sims)
-            break # just one for now
+            break # just one for now, maybe average for better results?
 
     return np.mean(layer_sims, axis=0) # layer sim list
 
