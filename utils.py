@@ -49,9 +49,9 @@ def run_class_circuit(class_idx: int, model, epochs=9, l0_lambda=0.05, lr=1e-3, 
         ce.visualize_circuit_masks(circuit) 
         
         import os
-        if os.path.exists("circuit_visualization.png"):
-            os.rename("circuit_visualization.png", f"circuit_viz_class_{class_idx}.png")
-            print(f"Saved visualization to: circuit_viz_class_{class_idx}.png")
+        if os.path.exists("out/circuit_visualization.png"):
+            os.rename("out/circuit_visualization.png", f"out/circuit_viz_class_{class_idx}.png")
+            print(f"Saved visualization to: out/circuit_viz_class_{class_idx}.png")
             
     except Exception as e:
         print(f"Visualization failed: {e}")
@@ -424,10 +424,6 @@ def plot_path_divergence_trajectories(divergence_dict, out_path, title):
 def union_circuits(circuits):
     """circuits: List of circuits"""
     neurons = torch.cat([active_neurons(c) for c in circuits], dim=0).unique()
-
-    # inv = torch.cat([active_neurons(invert_neurons(c)) for c in circuits, dim=0).unique()
-
-    # all_em = torch.cat(neurons, inv).unique()
 
     c_0_neurons = active_neurons(circuits[0])
     c_0 = deepcopy(circuits[0])
