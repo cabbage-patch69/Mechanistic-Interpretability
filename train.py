@@ -8,7 +8,7 @@ import torchvision
 from torchvision.transforms import v2
 import inference
 import typing
-
+import colour_mnist
 
 from torch import nn
 from torch.utils.data import DataLoader, Subset
@@ -194,7 +194,9 @@ def load_dataset(ds_name):
 
         train_idxs = resampler(labs.tolist(), probs, n=10000)
         trainset = Subset(trainset_super, train_idxs)
-
+    elif "colour" in ds_name:
+        trainloader = colour_mnist.get_biased_mnist_dataloader(root="./data", batch_size=128, data_label_correlation=0.99, train=True, num_workers=16)
+        testloader = colour_mnist.get_biased_mnist_dataloader(root="./data", batch_size=128, data_label_correlation=0.99, train=False, num_workers=16)
     
     else:
         raise NotImplementedError
