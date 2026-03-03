@@ -18,7 +18,7 @@ def scheduler(start, end, start_sparsity, target_sparsity, alpha):
     return f
 
 #added an optional parameter
-def run_class_circuit(class_idx: int, model, epochs=9, l0_lambda=0.05, lr=1e-3, mean_ablation=True):
+def run_class_circuit(class_idx: int, model, epochs=9, l0_lambda=0.05, lr=1e-3, mean_ablation=True, seed=42):
     """
     Extracts and visualizes a circuit for a specific target class (0-9).
     """
@@ -39,7 +39,7 @@ def run_class_circuit(class_idx: int, model, epochs=9, l0_lambda=0.05, lr=1e-3, 
         epochs=epochs,
         device=device,
         l0_lambda=l0_lambda,
-        seed=42,
+        seed=seed,
         mean_ablation=mean_ablation
     )
 
@@ -222,7 +222,7 @@ def path_divergence(c_a: inf.Circuit, c_b: inf.Circuit, loader, dev="cuda"):
             batch_sims = []
 
             # active masks only
-            for i,act_a, act_b in enumerate(zip(c_a.cache, c_b.cache)):
+            for i, (act_a, act_b) in enumerate(zip(c_a.cache, c_b.cache)):
                 if not c_a.masks[i].active:
                     continue
                 flat_a, flat_b = act_a.view(act_a.size(0), -1), act_b.view(act_b.size(0), -1)
@@ -295,22 +295,23 @@ def get_mask_ratio_layerwise(c_a: inf.Circuit, c_b: inf.Circuit):
             
     return ratios
 
-def get_n_circuits_same_class(model, class_idx, n=10, epochs=10, lr=0.1, l0_lambda=8e2):
+def get_n_circuits_same_class(model, class_idx, n=10, epochs=10, lr=0.1, l0_lambda=8e2, seed=42):
     circuits = []
     for i in range(n):
         print(f"Extracting duplicate {i+1}/{n} for class {class_idx}")
-
+        seed += 1
         c = run_class_circuit(class_idx=class_idx, model=model, epochs=epochs, 
-                                 l0_lambda=l0_lambda, lr=lr, mean_ablation=True)
+                                 l0_lambda=l0_lambda, lr=lr, mean_ablation=True, seed=seed)
         circuits.append(c)
     return circuits
 
-def get_circuit_from_classes(model, classes=[0,1,2,3,4,5,6,7,8,9], epochs=10, lr=0.1, l0_lambda=8e2):
+def get_circuit_from_classes(model, classes=[0,1,2,3,4,5,6,7,8,9], epochs=10, lr=0.1, l0_lambda=8e2, seed=42):
     circuits_dict = {}
-    for cls in classes:
+    for i, cls in enumerate(classes):
         print(f"Extracting circuit for class {cls}")
+        seed += i
         c = run_class_circuit(class_idx=cls, model=model, epochs=epochs, 
-                                 l0_lambda=l0_lambda, lr=lr, mean_ablation=True)
+                                 l0_lambda=l0_lambda, lr=lr, mean_ablation=True, seed=seed)
         circuits_dict[cls] = c
     return circuits_dict
 
@@ -466,11 +467,12 @@ def train_n_models(n, config, sched):
 
     return models
 
-def get_circuits_from_models(models, cls, epochs=10, lr=0.1, l0_lambda=8e2, mean_ablation=True):
+def get_circuits_from_models(models, cls, epochs=10, lr=0.1, l0_lambda=8e2, mean_ablation=True, seed=42):
     circuits = []
     for i, model in enumerate(models):
         # print(f"getting circuit for class:{cls} from Model {i+1}/{len(models)}")
-        c = run_class_circuit(cls, model, epochs=epochs, l0_lambda=l0_lambda, lr=lr, mean_ablation=mean_ablation)
+        seed += i
+        c = run_class_circuit(cls, model, epochs=epochs, l0_lambda=l0_lambda, lr=lr, mean_ablation=mean_ablation, seed=seed)
         circuits.append(c)
     return circuits
 
@@ -507,12 +509,12 @@ def visualize_iso_nec(isolation_acc: dict, necessity_acc: dict,
 
 def cross_model_circuit_test(src_model, target_model, target_loader, class_idx, 
                              src_circuit=None, epochs=3, lr=0.1, l0_lambda=5e+1, 
-                             mean_ablation=True, dev='cuda'):
+                             mean_ablation=True, dev='cuda', seed=42):
     if src_circuit is None:
         print(f"Extracting source circuit for class {class_idx}...")
         src_circuit = run_class_circuit(
             class_idx=class_idx, model=src_model, epochs=epochs, 
-            l0_lambda=l0_lambda, lr=lr, mean_ablation=mean_ablation
+            l0_lambda=l0_lambda, lr=lr, mean_ablation=mean_ablation, seed=seed
         )
     mean_acts_target = train.calculate_mean_activations(target_model, target_loader, dev)
 
