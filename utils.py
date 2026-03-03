@@ -229,6 +229,7 @@ def path_divergence(c_a: inf.Circuit, c_b: inf.Circuit, loader, dev="cuda"):
                 batch_sims.append(F.cosine_similarity(flat_a, flat_b, dim=1).mean().item())
 
             layer_sims.append(batch_sims)
+            break
 
     return np.mean(layer_sims, axis=0)
 
@@ -400,31 +401,59 @@ def path_divergence_dict(circuits_dict, loader, device="cuda"):
 
 def plot_path_divergence_trajectories(divergence_dict, out_path, title):
         
-    plt.figure(figsize=(14, 7))
+    # plt.figure(figsize=(14, 7))
     
-    layers = range(len(next(iter(divergence_dict.values()))))
+    # layers = range(len(next(iter(divergence_dict.values()))))
     
     sorted_pairs = sorted(divergence_dict.items(), key=lambda x: str(x[0]))
+
+    pair_labels = [f"{p[0]} vs {p[1]}" for p, _ in sorted_pairs]
+    sim_matrix = np.array([sims for _, sims in sorted_pairs])
+
+    num_layers = sim_matrix.shape[1]
+    layers = [f"L{i}" for i in range(num_layers)]
+
+    plt.figure(figsize=(12, len(pair_labels) * 0.3 + 2))
+
+    ax = sns.heatmap(
+        sim_matrix, 
+        annot=True,
+        fmt=".2f", 
+        cmap="viridis", 
+        xticklabels=layers, 
+        yticklabels=pair_labels,
+        cbar_kws={'label': 'Cosine Similarity'}
+    )
+
+    plt.title(title, fontsize=14, fontweight='bold', pad=20)
+    plt.xlabel("Layer Index", fontsize=12)
+    plt.ylabel("Circuit Comparison Pairs", fontsize=12)
     
-    colormap = plt.cm.get_cmap('tab20', len(sorted_pairs))
-    
-    for idx, (pair, sims) in enumerate(sorted_pairs):
-        label_name = f"{pair[0]} vs {pair[1]}"
-        plt.plot(layers, sims, marker='o', linewidth=2, alpha=0.7, color=colormap(idx), label=label_name)
-        
-    plt.title(title, fontsize=14, fontweight='bold')
-    plt.xlabel("Layer Index (from input to output)", fontsize=12)
-    plt.ylabel("Cosine Similarity (Intermediate Activations)", fontsize=12)
-    plt.xticks(layers)
-    
-    # handles upto ~45 items well..
-    plt.legend(bbox_to_anchor=(1.02, 1), loc="upper left", ncol=2, fontsize='small', title="Circuit Pairs")
-    
-    plt.grid(True, linestyle='--', alpha=0.5)
+    # Clean up layout
     plt.tight_layout()
     plt.savefig(out_path, dpi=300, bbox_inches='tight')
     plt.show()
     plt.close()
+    
+    # colormap = plt.cm.get_cmap('tab20', len(sorted_pairs))
+    
+    # for idx, (pair, sims) in enumerate(sorted_pairs):
+    #     label_name = f"{pair[0]} vs {pair[1]}"
+    #     plt.plot(layers, sims, marker='o', linewidth=2, alpha=0.7, color=colormap(idx), label=label_name)
+        
+    # plt.title(title, fontsize=14, fontweight='bold')
+    # plt.xlabel("Layer Index (from input to output)", fontsize=12)
+    # plt.ylabel("Cosine Similarity (Intermediate Activations)", fontsize=12)
+    # plt.xticks(layers)
+    
+    # # handles upto ~45 items well..
+    # plt.legend(bbox_to_anchor=(1.02, 1), loc="upper left", ncol=2, fontsize='small', title="Circuit Pairs")
+    
+    # plt.grid(True, linestyle='--', alpha=0.5)
+    # plt.tight_layout()
+    # plt.savefig(out_path, dpi=300, bbox_inches='tight')
+    # plt.show()
+    # plt.close()
 
 def union_circuits(circuits):
     """circuits: List of circuits"""
