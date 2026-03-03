@@ -211,6 +211,9 @@ def path_divergence(c_a: inf.Circuit, c_b: inf.Circuit, loader, dev="cuda"):
     # course, not granular
     layer_sims = []
 
+
+    layer_sims.append(batch_sims)
+
     with torch.no_grad():
         for inp, _ in loader:
             inp = inp.to(dev)
@@ -218,13 +221,14 @@ def path_divergence(c_a: inf.Circuit, c_b: inf.Circuit, loader, dev="cuda"):
 
             batch_sims = []
 
-            for act_a, act_b in zip(c_a.cache, c_b.cache): # need to select activations only for active masks in cache
+            for i,act_a, act_b in enumerate(zip(c_a.cache, c_b.cache)): # need to select activations only for active masks in cache
+                if not c_a.masks[i].active:
+                    continue
                 flat_a, flat_b = act_a.view(act_a.size(0), -1), act_b.view(act_b.size(0), -1)
-                batch_sims.append(F.cosine_similarity(flat_a, flat_b, dim=1).mean().item())
+                batch_sims.append(F.cosine_similarity(act_a, flat_b, dim=1).mean().item())#mean similarity across channels
 
             layer_sims.append(batch_sims)
-            break # just one for now, maybe average for better results?
-
+            # break # just one for now, maybe average for better results?
     return np.mean(layer_sims, axis=0) # layer sim list
 
 def interp_circ(c_a: inf.Circuit, c_b: inf.Circuit, alpha):
