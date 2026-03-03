@@ -315,7 +315,7 @@ def get_circuit_from_classes(model, classes=[0,1,2,3,4,5,6,7,8,9], epochs=10, lr
         circuits_dict[cls] = c
     return circuits_dict
 
-def isolation_testing(circuit, dataloader, classes=[0,1,2,3,4,5,6,7,8,9], dev='cuda'):
+def isolation_testing(circuit, dataloader, classes=[0,1,2,3,4,5,6,7,8,9], dev='cpu'):
     circuit.mean_ablation = not circuit.mean_ablation
     
     accs = class_wise_acc(circuit, dataloader, classes, dev)
