@@ -212,7 +212,7 @@ def path_divergence(c_a: inf.Circuit, c_b: inf.Circuit, loader, dev="cuda"):
     layer_sims = []
 
 
-    layer_sims.append(batch_sims)
+    # layer_sims.append(batch_sims)
 
     with torch.no_grad():
         for inp, _ in loader:
@@ -221,15 +221,16 @@ def path_divergence(c_a: inf.Circuit, c_b: inf.Circuit, loader, dev="cuda"):
 
             batch_sims = []
 
-            for i,act_a, act_b in enumerate(zip(c_a.cache, c_b.cache)): # need to select activations only for active masks in cache
+            # active masks only
+            for i,act_a, act_b in enumerate(zip(c_a.cache, c_b.cache)):
                 if not c_a.masks[i].active:
                     continue
                 flat_a, flat_b = act_a.view(act_a.size(0), -1), act_b.view(act_b.size(0), -1)
-                batch_sims.append(F.cosine_similarity(act_a, flat_b, dim=1).mean().item())#mean similarity across channels
+                batch_sims.append(F.cosine_similarity(flat_a, flat_b, dim=1).mean().item())
 
             layer_sims.append(batch_sims)
-            # break # just one for now, maybe average for better results?
-    return np.mean(layer_sims, axis=0) # layer sim list
+
+    return np.mean(layer_sims, axis=0)
 
 def interp_circ(c_a: inf.Circuit, c_b: inf.Circuit, alpha):
     interp = deepcopy(c_a)
@@ -435,3 +436,101 @@ def union_circuits(circuits):
     toggle_neurons(c_0, neurons)
 
     return c_0
+
+def train_n_models(n, config, sched):
+    models = []
+    base_seed = config.get("seed", 42)
+
+    for i in range(n):
+        # print(f"Model {i+1}/{n}")
+        current_seed = base_seed + i
+        model = inf.CNN(
+            nc=1, 
+            nf=16, 
+            num_classes=config.get("num_classes", 10), 
+            inp_shape=config.get("inp_shape", (1, 28, 28))
+        )
+
+        train.train_model(
+            model=model,
+            lr=config.get('lr', 1e-3),
+            b1=0.9, b2=0.999,
+            ds_name=config.get('ds_name', 'mnist-baseline'),
+            eps=1e-8,
+            epochs=config.get('epochs', 15),
+            device=config.get('device', 'cuda'),
+            scheduler=sched,
+            seed=current_seed
+        )
+        models.append(model)
+
+    return models
+
+def get_circuits_from_models(models, cls, epochs=10, lr=0.1, l0_lambda=8e2, mean_ablation=True):
+    circuits = []
+    for i, model in enumerate(models):
+        # print(f"getting circuit for class:{cls} from Model {i+1}/{len(models)}")
+        c = run_class_circuit(cls, model, epochs=epochs, l0_lambda=l0_lambda, lr=lr, mean_ablation=mean_ablation)
+        circuits.append(c)
+    return circuits
+
+def visualize_iso_nec(isolation_acc: dict, necessity_acc: dict,
+                      title="Isolation vs Necessity Testing",
+                      figsize=(10, 6),
+                      ylim=(0, 1)):
+    classes = sorted(isolation_acc.keys())
+    iso_vals = [isolation_acc[c] for c in classes]
+    nec_vals = [necessity_acc[c] for c in classes]
+
+    x = np.arange(len(classes))
+    width = 0.35
+
+    plt.figure(figsize=figsize)
+
+    plt.bar(x - width/2, iso_vals, width, label="Isolation", alpha=0.8)
+    plt.bar(x + width/2, nec_vals, width, label="Necessity", alpha=0.8)
+
+    plt.xticks(x, classes)
+    plt.xlabel("Class")
+    plt.ylabel("Accuracy")
+    plt.ylim(*ylim)
+    plt.title(title, fontsize=14)
+    plt.legend()
+
+    for i, v in enumerate(iso_vals):
+        plt.text(i - width/2, v + 0.01, f"{v:.2f}", ha='center', fontsize=9)
+    for i, v in enumerate(nec_vals):
+        plt.text(i + width/2, v + 0.01, f"{v:.2f}", ha='center', fontsize=9)
+
+    plt.tight_layout()
+    plt.show()
+
+def cross_model_circuit_test(src_model, target_model, target_loader, class_idx, 
+                             src_circuit=None, epochs=3, lr=0.1, l0_lambda=5e+1, 
+                             mean_ablation=True, dev='cuda'):
+    if src_circuit is None:
+        print(f"Extracting source circuit for class {class_idx}...")
+        src_circuit = run_class_circuit(
+            class_idx=class_idx, model=src_model, epochs=epochs, 
+            l0_lambda=l0_lambda, lr=lr, mean_ablation=mean_ablation
+        )
+    mean_acts_target = train.calculate_mean_activations(target_model, target_loader, dev)
+
+    dummy_x, _ = next(iter(target_loader))
+    inp_shape = dummy_x[0].shape
+
+    target_circuit = inf.Circuit(
+        model=target_model, 
+        inp_shape=inp_shape, 
+        mean_activations=mean_acts_target, 
+        temperature=src_circuit.temperature, 
+        mean_ablation=mean_ablation
+    )
+    target_circuit.to(dev)
+
+    with torch.no_grad():
+        for m_src, m_target in zip(src_circuit.masks, target_circuit.masks):
+            if m_src.active and m_target.active:
+                m_target.mask.copy_(m_src.mask)
+
+    visualize_iso_nec(isolation_testing(target_circuit, target_loader), necessity_testing(target_circuit, target_loader))
