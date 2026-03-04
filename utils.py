@@ -18,13 +18,14 @@ def scheduler(start, end, start_sparsity, target_sparsity, alpha):
     return f
 
 #added an optional parameter
-def run_class_circuit(class_idx: int, model, epochs=9, l0_lambda=0.05, lr=1e-3, mean_ablation=True, seed=42):
+def run_class_circuit(class_idx: int, model, epochs=9, l0_lambda=0.05, lr=1e-3, mean_ablation=True, seed=42, colour = False):
     """
     Extracts and visualizes a circuit for a specific target class (0-9).
     """
     print(f" Processing Class {class_idx} ")
     
     ds_name = f"mnist-class-{class_idx}"
+    if colour: ds_name = f"colour-class-{class_idx}"
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
@@ -539,12 +540,12 @@ def visualize_iso_nec(isolation_acc: dict, necessity_acc: dict,
 
 def cross_model_circuit_test(src_model, target_model, target_loader, class_idx, 
                              src_circuit=None, epochs=3, lr=0.1, l0_lambda=5e+1, 
-                             mean_ablation=True, dev='cuda', seed=42):
+                             mean_ablation=True, dev='cuda', seed=42, src_colour = False):
     if src_circuit is None:
         print(f"Extracting source circuit for class {class_idx}...")
         src_circuit = run_class_circuit(
             class_idx=class_idx, model=src_model, epochs=epochs, 
-            l0_lambda=l0_lambda, lr=lr, mean_ablation=mean_ablation, seed=seed
+            l0_lambda=l0_lambda, lr=lr, mean_ablation=mean_ablation, seed=seed, colour=src_colour
         )
     mean_acts_target = train.calculate_mean_activations(target_model, target_loader, dev)
 

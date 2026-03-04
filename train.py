@@ -197,6 +197,13 @@ def load_dataset(ds_name):
     elif "colour" in ds_name:
         trainloader = colour_mnist.get_biased_mnist_dataloader(root="./data", batch_size=128, data_label_correlation=0.99, train=True, num_workers=4)
         testloader = colour_mnist.get_biased_mnist_dataloader(root="./data", batch_size=128, data_label_correlation=0.99, train=False, num_workers=4)
+        if "class" in ds_name:
+            label = int(ds_name[-1])
+            trainset = Subset(trainloader.dataset, torch.where(trainloader.dataset.targets == label)[0])
+            testset = Subset(testloader.dataset, torch.where(testloader.dataset.targets == label)[0])
+
+            trainloader = DataLoader(trainset, batch_size=128, shuffle=True, pin_memory=True, num_workers=4)
+            testloader = DataLoader(testset, batch_size=128, shuffle=False, pin_memory=True, num_workers=4)
         return trainloader, testloader
     
     else:
