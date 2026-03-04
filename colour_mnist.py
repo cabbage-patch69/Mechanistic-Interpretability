@@ -141,7 +141,7 @@ class BiasedMNIST(MNIST):
         if self.target_transform is not None:
             target = self.target_transform(target)
 
-        return img, target, int(self.biased_targets[index])
+        return img, target #, int(self.biased_targets[index])
 
 
 class ColourBiasedMNIST(BiasedMNIST):

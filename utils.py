@@ -472,7 +472,7 @@ def train_n_models(n, config, sched):
     base_seed = config.get("seed", 42)
 
     for i in range(n):
-        # print(f"Model {i+1}/{n}")
+        print(f"Model {i+1}/{n}")
         current_seed = base_seed + i
         model = inf.CNN(
             nc=1, 

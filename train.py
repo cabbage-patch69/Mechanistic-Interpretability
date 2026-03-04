@@ -197,6 +197,7 @@ def load_dataset(ds_name):
     elif "colour" in ds_name:
         trainloader = colour_mnist.get_biased_mnist_dataloader(root="./data", batch_size=128, data_label_correlation=0.99, train=True, num_workers=4)
         testloader = colour_mnist.get_biased_mnist_dataloader(root="./data", batch_size=128, data_label_correlation=0.99, train=False, num_workers=4)
+        return trainloader, testloader
     
     else:
         raise NotImplementedError
