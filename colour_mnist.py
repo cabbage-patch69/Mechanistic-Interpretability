@@ -174,7 +174,7 @@ class ColourBiasedMNIST(BiasedMNIST):
 
 
 def get_biased_mnist_dataloader(root, batch_size, data_label_correlation,
-                                n_confusing_labels=9, train=True, num_workers=8):
+                                n_confusing_labels=9, train=True, num_workers=4):
     transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize(mean=(0.5, 0.5, 0.5),
