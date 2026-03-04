@@ -474,8 +474,9 @@ def train_n_models(n, config, sched):
     for i in range(n):
         print(f"Model {i+1}/{n}")
         current_seed = base_seed + i
+        inp_shape = config.get("inp_shape", (1, 28, 28))
         model = inf.CNN(
-            nc=1, 
+            nc=inp_shape[0], 
             nf=16, 
             num_classes=config.get("num_classes", 10), 
             inp_shape=config.get("inp_shape", (1, 28, 28))
