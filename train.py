@@ -195,16 +195,33 @@ def load_dataset(ds_name):
         train_idxs = resampler(labs.tolist(), probs, n=10000)
         trainset = Subset(trainset_super, train_idxs)
     elif "colour" in ds_name:
-        trainloader = colour_mnist.get_biased_mnist_dataloader(root="./data", batch_size=128, data_label_correlation=0.99, train=True, num_workers=4)
-        testloader = colour_mnist.get_biased_mnist_dataloader(root="./data", batch_size=128, data_label_correlation=0.99, train=False, num_workers=4)
+        rho = float(ds_name.split('-')[1])
+
+        trainloader = colour_mnist.get_biased_mnist_dataloader(root="./data", batch_size=128, data_label_correlation=rho, train=True, num_workers=4)
+        testloader = colour_mnist.get_biased_mnist_dataloader(root="./data", batch_size=128, data_label_correlation=rho, train=False, num_workers=4)
         if "class" in ds_name:
-            label = int(ds_name[-1])
+            label = int(ds_name.split('-')[-1])
             trainset = Subset(trainloader.dataset, torch.where(trainloader.dataset.targets == label)[0])
             testset = Subset(testloader.dataset, torch.where(testloader.dataset.targets == label)[0])
 
             trainloader = DataLoader(trainset, batch_size=128, shuffle=True, pin_memory=True, num_workers=4)
             testloader = DataLoader(testset, batch_size=128, shuffle=False, pin_memory=True, num_workers=4)
         return trainloader, testloader
+    
+    elif "channeled" in ds_name:
+        
+        if "class" in ds_name:
+            label = int(ds_name[-1])
+            dataset = colour_mnist.ChanneledMNIST(root="./data",transform=transform, download=True)
+            train_idxs = torch.arange(len(dataset.train_labels))[dataset.train_labels == label]
+            test_idxs  = torch.arange(len(dataset.test_labels))[dataset.test_labels == label]
+
+            trainset = Subset(dataset, train_idxs)
+            testset = Subset(dataset, test_idxs)
+        else:
+            trainset =colour_mnist.ChanneledMNIST(root="./data",transform=transform, download=True, train=True)
+            testset = colour_mnist.ChanneledMNIST(root="./data",transform=transform, download=True, train=False)
+
     
     else:
         raise NotImplementedError
@@ -322,6 +339,7 @@ def extract_circuit(
         l0_lambda: float = 0.0, 
         temperature:float =0.3,
         mean_ablation: bool = True,
+        mean_ablation_dataset: str = None,
         seed=0
     ):
     
@@ -336,7 +354,11 @@ def extract_circuit(
     inp_shape = next(iter(trainloader))[0][0].shape # (C, H, W)
 
     print("Calculating mean activations...")
-    mean_activations = calculate_mean_activations(model, load_dataset("mnist-baseline")[0], device)
+    if mean_ablation_dataset is None:
+        mean_activations = calculate_mean_activations(model, load_dataset("mnist-baseline")[0], device)
+    else:
+        mean_activations = calculate_mean_activations(model, load_dataset(mean_ablation_dataset)[0], device)
+
     
     print("Initializing Circuit...")
     circuit = inference.Circuit(model, inp_shape, mean_activations, temperature, mean_ablation)

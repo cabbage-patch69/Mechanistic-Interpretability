@@ -18,7 +18,7 @@ def scheduler(start, end, start_sparsity, target_sparsity, alpha):
     return f
 
 #added an optional parameter
-def run_class_circuit(class_idx: int, model, epochs=9, l0_lambda=0.05, lr=1e-3, mean_ablation=True, seed=42, colour = False):
+def run_class_circuit(class_idx: int, model, epochs=9, l0_lambda=0.05, lr=1e-3, mean_ablation=True, seed=42, colour = False, ds = None):
     """
     Extracts and visualizes a circuit for a specific target class (0-9).
     """
@@ -26,7 +26,10 @@ def run_class_circuit(class_idx: int, model, epochs=9, l0_lambda=0.05, lr=1e-3, 
     
     ds_name = f"mnist-class-{class_idx}"
     if colour: ds_name = f"colour-class-{class_idx}"
-    
+
+    if ds is not None:
+        ds_name = ds
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     print(f"Configuration: Device={device}, Lambda={l0_lambda}, Dataset={ds_name}")

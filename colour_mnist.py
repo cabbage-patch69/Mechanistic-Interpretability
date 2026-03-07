@@ -188,3 +188,27 @@ def get_biased_mnist_dataloader(root, batch_size, data_label_correlation,
                                  num_workers=num_workers,
                                  pin_memory=True)
     return dataloader
+
+class ChanneledMNIST(MNIST):
+    def __init__(self, root, train=True, transform=None, target_transform=None, download=False):
+        super().__init__(root, train=train, transform=transform,
+                         target_transform=target_transform,
+                         download=download)
+        self.random = True
+        self.data = self._to_3_channels(self.data) # Replaced self.channel with actual logic
+
+    def _to_3_channels(self, data):
+        data_3c = torch.stack([data, data, data], dim=-1)
+        return data_3c.numpy() 
+
+    def __getitem__(self, index):
+        img, target = self.data[index], int(self.targets[index])
+        img = Image.fromarray(img.astype(np.uint8), mode='RGB')
+
+        if self.transform is not None:
+            img = self.transform(img)
+
+        if self.target_transform is not None:
+            target = self.target_transform(target)
+
+        return img, target
